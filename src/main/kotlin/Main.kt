@@ -1,4 +1,6 @@
 import catcoder.base.DirectoryFilesRunner
+import catcoder.base.Vector2
+import java.lang.Exception
 import kotlin.math.absoluteValue
 import kotlin.math.atan2
 import kotlin.math.roundToInt
@@ -246,7 +248,7 @@ data class TreeDistance(
     }
 }
 
-fun main7(args: Array<String>) {
+fun main(args: Array<String>) {
     DirectoryFilesRunner("C:\\Users\\Lucky13\\IdeaProjects\\catcoder-base\\src\\main\\resources\\level4").forEach { reader, writer ->
         val numberOfLawns = reader.readOne()[0].toInt()
         (1..numberOfLawns).forEach { lawnIt ->
@@ -259,20 +261,49 @@ fun main7(args: Array<String>) {
                 lawnRows.add(reader.readOne()[0])
             }
 
-            val lawnCoords = mutableMapOf<Coord, Char>()
+            val lawnCoords = mutableMapOf<Vector2, Char>()
             lawnRows.forEachIndexed { rowIndex, row ->
                 row.forEachIndexed { indexSymbol, symbol ->
                     val y = lawnHeight - 1 - rowIndex
                     val x = indexSymbol
-                    lawnCoords[Coord(x, y)] = symbol
+                    lawnCoords[Vector2(x, y)] = symbol
                 }
             }
 
-            val treeDistance = TreeDistance.ofLawnCoords(lawnCoords)
+            val grassCoords = lawnCoords.filter { it.value == '.' }.map { it.key }.toSet()
+            val treeCoord = lawnCoords.filter { it.value == 'X' }.map { it.key }.first()
 
+            fun hasBubblesQuick(path: List<Vector2>) {
+                val freeCoords = grassCoords.minus(path.toSet())
+            }
+
+            fun isGrass(coord: Vector2): Boolean {
+                return grassCoords.contains(coord)
+            }
+
+            fun findPath(currentPath: List<Vector2>): List<Vector2>? {
+                //if (alreadyTriedPath.contains(currentPath)) throw Exception()
+                //alreadyTriedPath.add(currentPath)
+                if (currentPath.toSet() == grassCoords) return currentPath
+                val currentSpot = currentPath.last()
+                val neighbors = currentSpot.neighbors
+                val maybePath = neighbors.filter {
+                    !currentPath.contains(it) && isGrass(it)
+                }.firstNotNullOfOrNull {
+                    findPath(currentPath + it)
+                }
+                // if (maybePath == null) println("DEADEND")
+                return maybePath
+            }
+
+            val allStartingPoints = grassCoords
+
+            val path = allStartingPoints.firstNotNullOfOrNull {
+                println("Trying starting point ${it}")
+                findPath(listOf(it))
+            }
+            println(path)
             // todo: break it down to thomsche cases
-
-
         }
 
     }
