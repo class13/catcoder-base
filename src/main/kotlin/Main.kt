@@ -1,6 +1,5 @@
 import catcoder.base.DirectoryFilesRunner
 import catcoder.base.Vector2
-import java.lang.Exception
 import kotlin.math.absoluteValue
 import kotlin.math.atan2
 import kotlin.math.roundToInt
@@ -249,7 +248,7 @@ data class TreeDistance(
 }
 
 fun main(args: Array<String>) {
-    DirectoryFilesRunner("C:\\Users\\Lucky13\\IdeaProjects\\catcoder-base\\src\\main\\resources\\level4").forEach { reader, writer ->
+    DirectoryFilesRunner("D:\\Projects\\catcoder-base\\src\\main\\resources\\level4_1").forEach { reader, writer ->
         val numberOfLawns = reader.readOne()[0].toInt()
         (1..numberOfLawns).forEach { lawnIt ->
             val lawnSize = reader.readOne()
@@ -271,26 +270,33 @@ fun main(args: Array<String>) {
             }
 
             val grassCoords = lawnCoords.filter { it.value == '.' }.map { it.key }.toSet()
-            val treeCoord = lawnCoords.filter { it.value == 'X' }.map { it.key }.first()
 
-            val min = Vector2(0, 0)
-            val max = Vector2(grassCoords.maxOf { it.x }, grassCoords.maxOf { it.y })
+            fun hasBubbles(path: List<Vector2>): Boolean {
+                val currentCoord = path.last()
+                val remainingCoords = grassCoords.minus(path.toSet())
 
-            fun hasBubblesQuick(path: List<Vector2>): Boolean {
-                val freeCoords = grassCoords.minus(path.toSet())
-                (min.x..max.x).forEach { x ->
-                    if (freeCoords.none { freeCoord -> freeCoord.x == x }) {
-                        println("Found bubble")
-                        return true
+                // splitting bubbles can only be possible if there are exactly 2 neighbors that are remaining grass fields
+                val bubbleSplitIsPossible = currentCoord.neighbors.filter { remainingCoords.contains(it) }.size == 2
+                if (!bubbleSplitIsPossible) return false
+
+                // calculating actual bubbles is pretty expensive
+                val bubbles: MutableSet<Set<Vector2>> = mutableSetOf()
+                remainingCoords.forEach { coord ->
+                    val neighboringBubbles = bubbles.filter { bubble ->
+                        coord.neighbors.any { coordNeighbor -> bubble.contains(coordNeighbor) }
                     }
-                }
-                (min.y..max.y).forEach { y ->
-                    if (freeCoords.none { freeCoord -> freeCoord.y == y }) {
-                        println("Found bubble")
-                        return true
+                    // create a new bubble
+                    val bubble = mutableSetOf<Vector2>()
+                    // merge all neighboring bubbles into that new bubble (means removing existing bubbles from the list)
+                    neighboringBubbles.forEach {
+                        bubbles.remove(it)
+                        bubble.addAll(it)
                     }
+                    bubble.add(coord)
+                    bubbles.add(bubble)
                 }
-                return false;
+
+                return bubbles.size > 1
             }
 
             fun isGrass(coord: Vector2): Boolean {
@@ -298,17 +304,14 @@ fun main(args: Array<String>) {
             }
 
             fun findPath(currentPath: List<Vector2>): List<Vector2>? {
-                //if (alreadyTriedPath.contains(currentPath)) throw Exception()
-                //alreadyTriedPath.add(currentPath)
                 if (currentPath.toSet() == grassCoords) return currentPath
                 val currentSpot = currentPath.last()
                 val neighbors = currentSpot.neighbors
                 val maybePath = neighbors.filter {
-                    !currentPath.contains(it) && isGrass(it) && !hasBubblesQuick(currentPath + it)
+                    !currentPath.contains(it) && isGrass(it) && !hasBubbles(currentPath + it)
                 }.firstNotNullOfOrNull {
                     findPath(currentPath + it)
                 }
-                // if (maybePath == null) println("DEADEND")
                 return maybePath
             }
 
