@@ -273,8 +273,24 @@ fun main(args: Array<String>) {
             val grassCoords = lawnCoords.filter { it.value == '.' }.map { it.key }.toSet()
             val treeCoord = lawnCoords.filter { it.value == 'X' }.map { it.key }.first()
 
-            fun hasBubblesQuick(path: List<Vector2>) {
+            val min = Vector2(0, 0)
+            val max = Vector2(grassCoords.maxOf { it.x }, grassCoords.maxOf { it.y })
+
+            fun hasBubblesQuick(path: List<Vector2>): Boolean {
                 val freeCoords = grassCoords.minus(path.toSet())
+                (min.x..max.x).forEach { x ->
+                    if (freeCoords.none { freeCoord -> freeCoord.x == x }) {
+                        println("Found bubble")
+                        return true
+                    }
+                }
+                (min.y..max.y).forEach { y ->
+                    if (freeCoords.none { freeCoord -> freeCoord.y == y }) {
+                        println("Found bubble")
+                        return true
+                    }
+                }
+                return false;
             }
 
             fun isGrass(coord: Vector2): Boolean {
@@ -288,7 +304,7 @@ fun main(args: Array<String>) {
                 val currentSpot = currentPath.last()
                 val neighbors = currentSpot.neighbors
                 val maybePath = neighbors.filter {
-                    !currentPath.contains(it) && isGrass(it)
+                    !currentPath.contains(it) && isGrass(it) && !hasBubblesQuick(currentPath + it)
                 }.firstNotNullOfOrNull {
                     findPath(currentPath + it)
                 }
