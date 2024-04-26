@@ -4,44 +4,9 @@ import kotlin.math.absoluteValue
 import kotlin.math.atan2
 import kotlin.math.roundToInt
 
-data class Coord(
-    val x: Int,
-    val y: Int
-) {
-    fun getConnectedCoords(): List<Coord> {
-        return listOf(
-            Coord(x+1, y),
-            Coord(x-1, y),
-            Coord(x, y+1),
-            Coord(x, y-1)
-        )
-    }
-
-    fun getConnectedCoordsWithDiagonal(): List<Coord> {
-        return listOf(
-            Coord(x+1, y),
-            Coord(x-1, y),
-            Coord(x, y+1),
-            Coord(x, y-1),
-            Coord(x-1, y-1),
-            Coord(x+1, y-1),
-            Coord(x+1, y+1),
-            Coord(x-1, y+1),
-        )
-    }
-
-    fun minus(coord: Coord): Coord {
-        return Coord(this.x - coord.x, this.y - coord.y)
-    }
-
-    fun plus(coord: Coord): Coord {
-        return Coord(this.x + coord.x, this.y + coord.y)
-    }
-}
-
 data class Step(
-    val coordA: Coord,
-     val coordB: Coord
+    val coordA: Vector2,
+     val coordB: Vector2
 ) {
     val coords = listOf(coordA, coordB)
     val isDiagonal = coordA.x != coordB.x && coordA.y != coordB.y
@@ -52,13 +17,13 @@ data class Step(
     fun isCrossing(step: Step): Boolean {
         if (!step.isDiagonal || !this.isDiagonal) return false
         val allCoords = (this.coords + step.coords).toSet()
-        val normalPoint = Coord(allCoords.minOf { it.x }, allCoords.minOf { it.y })
+        val normalPoint = Vector2(allCoords.minOf { it.x }, allCoords.minOf { it.y })
         val allCoordsNormalized = allCoords.map { it.minus(normalPoint) }.toSet()
         val square = setOf(
-            Coord(0, 0),
-            Coord(0, 1),
-            Coord(1, 0),
-            Coord(1, 1),
+            Vector2(0, 0),
+            Vector2(0, 1),
+            Vector2(1, 0),
+            Vector2(1, 1),
         )
         return square == allCoordsNormalized
     }
@@ -69,7 +34,7 @@ data class Step(
         return result
     }
 
-    fun calculateAngleToReferencePoint(coord: Coord): Double {
+    fun calculateAngleToReferencePoint(coord: Vector2): Double {
         val deltaAX = coord.x - coordA.x
         val deltaAY = coord.y - coordA.y
         val deltaBX = coord.x - coordB.x
@@ -80,7 +45,7 @@ data class Step(
 }
 
 data class Path(
-    val coords: List<Coord>
+    val coords: List<Vector2>
 ) {
     val size = coords.size
     val steps = (0..<(coords.size-1)).map {
@@ -104,12 +69,12 @@ data class Path(
         return !isTileVisitedTwice() && !isAnyCrossing()
     }
 
-    fun add(coord: Coord): Path {
+    fun add(coord: Vector2): Path {
         return Path(coords + coord)
 
     }
 
-    fun isInside(coord: Coord): Boolean {
+    fun isInside(coord: Vector2): Boolean {
         val angleTotal = loopSteps.sumOf { it.calculateAngleToReferencePoint(coord) }
         return angleTotal.roundToInt().absoluteValue % 360 == 0
     }
@@ -138,18 +103,20 @@ fun main1(args: Array<String>) {
 }
 
 val directionMap = mapOf(
-    Pair('W', Coord(0, 1)),
-    Pair('S', Coord(0, -1)),
-    Pair('A', Coord(-1, 0)),
-    Pair('D', Coord(1, 0)),
+    Pair('W', Vector2(0, 1)),
+    Pair('S', Vector2(0, -1)),
+    Pair('A', Vector2(-1, 0)),
+    Pair('D', Vector2(1, 0)),
 )
+
+val reverseDirectionMap = directionMap.entries.associate { Pair(it.value, it.key) }
 
 fun main2(args: Array<String>) {
     DirectoryFilesRunner("C:\\Users\\Lucky13\\IdeaProjects\\catcoder-base\\src\\main\\resources\\level2").forEach { reader, writer ->
         val numberLines = reader.readOne()[0].toInt()
         (1.. numberLines).forEach {
             val line = reader.readOne()[0]
-            val currentCoord = Coord(0, 0)
+            val currentCoord = Vector2(0, 0)
             val allCoords = mutableListOf(currentCoord)
             line.forEach { symbol ->
                 allCoords.add(
@@ -188,7 +155,7 @@ fun main3(args: Array<String>) {
             }
             val pathSymbols = reader.readOne()[0]
 
-            val currentCoord = Coord(0, 0)
+            val currentCoord = Vector2(0, 0)
             val allPathCoordsRelative = mutableListOf(currentCoord)
             pathSymbols.forEach { symbol ->
                 allPathCoordsRelative.add(
@@ -198,18 +165,18 @@ fun main3(args: Array<String>) {
 
             val minX = allPathCoordsRelative.map { it.x }.min()
             val minY = allPathCoordsRelative.map { it.y }.min()
-            val relativeZero = Coord(minX, minY)
+            val relativeZero = Vector2(minX, minY)
 
             val allPathCoordsAbsolute = allPathCoordsRelative.map {
                 it.minus(relativeZero)
             }
 
-            val lawnCoords = mutableMapOf<Coord, Char>()
+            val lawnCoords = mutableMapOf<Vector2, Char>()
             lawnRows.forEachIndexed { rowIndex, row ->
                 row.forEachIndexed { indexSymbol, symbol ->
                     val y = lawnHeight - 1 - rowIndex
                     val x = indexSymbol
-                    lawnCoords[Coord(x, y)] = symbol
+                    lawnCoords[Vector2(x, y)] = symbol
                 }
             }
 
@@ -227,24 +194,21 @@ fun main3(args: Array<String>) {
     }
 }
 
-data class TreeDistance(
-    val south: Int,
-    val north: Int,
-    val west: Int,
-    val east: Int,
-) {
-    companion object {
-        fun ofLawnCoords(lawnCoords: Map<Coord, Char>): TreeDistance {
-            val treeCoord = lawnCoords.entries.filter { it.value == 'X' }.get(0).key
-
-            return  TreeDistance(
-                north = lawnCoords.map { it.key.y }.max() - treeCoord.y,
-                west = treeCoord.y,
-                east = lawnCoords.map { it.key.x}.max() - treeCoord.x ,
-                south = treeCoord.x % 2
-            )
-        }
+fun <T> toLinkList(list: List<T>): List<Pair<T, T>> {
+    return (1..list.lastIndex).map {
+        Pair(list[it-1], list[it])
     }
+
+}
+
+fun convertPathToString(path: List<Vector2>): String {
+    val steps = toLinkList(path)
+    return steps.map { it.second.minus(it.first) }.map { reverseDirectionMap[it]!! }.joinToString("")
+}
+
+fun printForVisualizer(lawnRows: List<String>, path: List<Vector2>) {
+    println(lawnRows.joinToString("\n"))
+    println(convertPathToString(path))
 }
 
 fun main(args: Array<String>) {
@@ -315,13 +279,13 @@ fun main(args: Array<String>) {
                 return maybePath
             }
 
-            val allStartingPoints = grassCoords
+            val allStartingPoints = grassCoords.sortedBy { it.x }.sortedBy { it.y }
 
             val path = allStartingPoints.firstNotNullOfOrNull {
                 println("Trying starting point ${it}")
                 findPath(listOf(it))
             }
-            println(path)
+            printForVisualizer(lawnRows, path!!)
             // todo: break it down to thomsche cases
         }
 
