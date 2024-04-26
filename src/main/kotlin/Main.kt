@@ -212,7 +212,7 @@ fun printForVisualizer(lawnRows: List<String>, path: List<Vector2>) {
 }
 
 fun main(args: Array<String>) {
-    DirectoryFilesRunner("D:\\Projects\\catcoder-base\\src\\main\\resources\\level4_1").forEach { reader, writer ->
+    DirectoryFilesRunner("D:\\Projects\\catcoder-base\\src\\main\\resources\\level4").forEach { reader, writer ->
         val numberOfLawns = reader.readOne()[0].toInt()
         (1..numberOfLawns).forEach { lawnIt ->
             val lawnSize = reader.readOne()
@@ -267,26 +267,32 @@ fun main(args: Array<String>) {
                 return grassCoords.contains(coord)
             }
 
-            fun findPath(currentPath: List<Vector2>): List<Vector2>? {
+            fun findPath(
+                currentPath: List<Vector2>,
+            ): List<Vector2>? {
                 if (currentPath.toSet() == grassCoords) return currentPath
                 val currentSpot = currentPath.last()
-                val neighbors = currentSpot.neighbors
-                val maybePath = neighbors.filter {
-                    !currentPath.contains(it) && isGrass(it) && !hasBubbles(currentPath + it)
-                }.firstNotNullOfOrNull {
-                    findPath(currentPath + it)
+
+                fun isValid(coord: Vector2): Boolean {
+                    return !currentPath.contains(coord) && isGrass(coord) && !hasBubbles(currentPath + coord)
                 }
+
+                val neighbors = currentSpot.neighbors
+                val maybePath = neighbors.filter { isValid(it) }
+                    .firstNotNullOfOrNull { findPath(currentPath + it) }
                 return maybePath
             }
 
             val allStartingPoints = grassCoords.sortedBy { it.x }.sortedBy { it.y }
 
             val path = allStartingPoints.firstNotNullOfOrNull {
-                println("Trying starting point ${it}")
+                println("Trying starting point $it")
                 findPath(listOf(it))
             }
             printForVisualizer(lawnRows, path!!)
-            // todo: break it down to thomsche cases
+
+            // todo: prioritize trying different starting points / different directions closer at the start of the path
+            // otherwise we get stuck in a loop trying out all minor changes of a doomed route
         }
 
     }
