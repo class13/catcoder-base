@@ -212,7 +212,7 @@ fun printForVisualizer(lawnRows: List<String>, path: List<Vector2>) {
 }
 
 fun main(args: Array<String>) {
-    DirectoryFilesRunner("D:\\Projects\\catcoder-base\\src\\main\\resources\\level4").forEach { reader, writer ->
+    DirectoryFilesRunner("D:\\Projects\\catcoder-base\\src\\main\\resources\\level4_1").forEach { reader, writer ->
         val numberOfLawns = reader.readOne()[0].toInt()
         (1..numberOfLawns).forEach { lawnIt ->
             val lawnSize = reader.readOne()
@@ -268,7 +268,7 @@ fun main(args: Array<String>) {
             }
 
             fun findPath(
-                currentPath: List<Vector2>,
+                currentPath: List<Vector2>
             ): List<Vector2>? {
                 if (currentPath.toSet() == grassCoords) return currentPath
                 val currentSpot = currentPath.last()
@@ -277,13 +277,18 @@ fun main(args: Array<String>) {
                     return !currentPath.contains(coord) && isGrass(coord) && !hasBubbles(currentPath + coord)
                 }
 
-                val neighbors = currentSpot.neighbors
+                val neighbors = currentSpot.neighbors.sortedBy { currentPath.size < 2 || currentSpot.minus(currentPath[currentPath.lastIndex-1]) != it.minus(currentSpot) }
                 val maybePath = neighbors.filter { isValid(it) }
                     .firstNotNullOfOrNull { findPath(currentPath + it) }
+
+                /*
+                if (maybePath == null) {
+                    printForVisualizer(lawnRows, currentPath!!)
+                }*/
                 return maybePath
             }
 
-            val allStartingPoints = grassCoords.sortedBy { it.x }.sortedBy { it.y }
+            val allStartingPoints = grassCoords
 
             val path = allStartingPoints.firstNotNullOfOrNull {
                 println("Trying starting point $it")
