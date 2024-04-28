@@ -1,5 +1,9 @@
 import catcoder.base.DirectoryFilesRunner
 import catcoder.base.Vector2
+import java.util.LinkedList
+import java.util.Queue
+import java.util.concurrent.atomic.AtomicReference
+import java.util.function.Supplier
 import kotlin.math.absoluteValue
 import kotlin.math.atan2
 import kotlin.math.roundToInt
@@ -212,7 +216,7 @@ fun printForVisualizer(lawnRows: List<String>, path: List<Vector2>) {
 }
 
 fun main(args: Array<String>) {
-    DirectoryFilesRunner("D:\\Projects\\catcoder-base\\src\\main\\resources\\level4_1").forEach { reader, writer ->
+    DirectoryFilesRunner("D:\\Projects\\catcoder-base\\src\\main\\resources\\level4").forEach { reader, writer ->
         val numberOfLawns = reader.readOne()[0].toInt()
         (1..numberOfLawns).forEach { lawnIt ->
             val lawnSize = reader.readOne()
@@ -267,6 +271,15 @@ fun main(args: Array<String>) {
                 return grassCoords.contains(coord)
             }
 
+
+
+
+            // todo: can i make the recursive findPath function to a async runnable?
+            // todo: so it either returns a path right now or it just spawn new async runnables
+
+            val foundPath: AtomicReference<List<Vector2>?> = AtomicReference(null)
+            val queue: Queue<Supplier<List<Vector2>?>> = LinkedList()
+
             fun findPath(
                 currentPath: List<Vector2>
             ): List<Vector2>? {
@@ -278,26 +291,45 @@ fun main(args: Array<String>) {
                 }
 
                 val neighbors = currentSpot.neighbors.sortedBy { currentPath.size < 2 || currentSpot.minus(currentPath[currentPath.lastIndex-1]) != it.minus(currentSpot) }
-                val maybePath = neighbors.filter { isValid(it) }
-                    .firstNotNullOfOrNull { findPath(currentPath + it) }
+                neighbors.filter { isValid(it) }
+                    .forEach {// todo: this was a first not null (executing only for the first neightbor that isValid
+                        queue.add {
+                            findPath(currentPath + it)
+                        }
 
-                /*
-                if (maybePath == null) {
-                    printForVisualizer(lawnRows, currentPath!!)
-                }*/
-                return maybePath
+                    }
+                return null
             }
 
-            val allStartingPoints = grassCoords
+            fun findPath(): List<Vector2>? {
+                val allStartingPoints = grassCoords
 
-            val path = allStartingPoints.firstNotNullOfOrNull {
-                println("Trying starting point $it")
-                findPath(listOf(it))
+                allStartingPoints.forEach {
+                    queue.add{ findPath(listOf(it)) }
+                }
+
+                while (queue.isNotEmpty()) {
+                    // todo: multithread here
+                    val runnable = queue.poll()
+                    val result = runnable.get()
+                    if (result != null) return result!!
+                }
+                return null // todo: there is a bug where the process doesnt find a solution for something that shoud have a solution
+                // todo: actually it was a bug that it was working at all, it just tried the first valid neighbor for each
+                // todo: but this kind of proves that a breadth first algorith that prioritizes earlier changes in the path should work
+
             }
-            printForVisualizer(lawnRows, path!!)
 
-            // todo: prioritize trying different starting points / different directions closer at the start of the path
-            // otherwise we get stuck in a loop trying out all minor changes of a doomed route
+
+
+            val path = findPath()
+            if (path == null) {
+                println(lawnRows.joinToString("\n"))
+                println("No path found")
+            } else {
+                println("Found path")
+                writer.writeOne(convertPathToString(path))
+            }
         }
 
     }

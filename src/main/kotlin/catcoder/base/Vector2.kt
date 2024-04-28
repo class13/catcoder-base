@@ -1,5 +1,7 @@
 package catcoder.base
 
+import kotlin.math.absoluteValue
+
 data class Vector2(
     val x: Int,
     val y: Int
@@ -45,6 +47,12 @@ data class Vector2(
 
     val inverse: Vector2
         get() = Vector2(-x, -y)
+
+    val isHorizontal: Boolean
+        get() = x != 0
+
+    val isVertical: Boolean
+        get() = y != 0
 
     val neighbors: List<Vector2>
         get() = cardinalNeighbors
