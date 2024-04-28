@@ -1,12 +1,15 @@
 import catcoder.base.DirectoryFilesRunner
 import catcoder.base.Vector2
+import java.util.Deque
 import java.util.LinkedList
 import java.util.Queue
+import java.util.Timer
 import java.util.concurrent.atomic.AtomicReference
 import java.util.function.Supplier
 import kotlin.math.absoluteValue
 import kotlin.math.atan2
 import kotlin.math.roundToInt
+import kotlin.system.measureTimeMillis
 
 data class Step(
     val coordA: Vector2,
@@ -217,11 +220,15 @@ fun printForVisualizer(lawnRows: List<String>, path: List<Vector2>) {
 
 fun main(args: Array<String>) {
     DirectoryFilesRunner("D:\\Projects\\catcoder-base\\src\\main\\resources\\level4").forEach { reader, writer ->
+        println("Processing ${reader.file.name}")
         val numberOfLawns = reader.readOne()[0].toInt()
         (1..numberOfLawns).forEach { lawnIt ->
+
             val lawnSize = reader.readOne()
             val lawnWidth = lawnSize[0].toInt()
             val lawnHeight = lawnSize[1].toInt()
+
+            println("Processing lawn ${lawnIt}/${numberOfLawns} (${lawnWidth}x${lawnHeight})")
 
             val lawnRows = mutableListOf<String>()
             (1..lawnHeight).forEach { lawnRowIt ->
@@ -278,7 +285,7 @@ fun main(args: Array<String>) {
             // todo: so it either returns a path right now or it just spawn new async runnables
 
             val foundPath: AtomicReference<List<Vector2>?> = AtomicReference(null)
-            val queue: Queue<Supplier<List<Vector2>?>> = LinkedList()
+            val queue: Deque<Supplier<List<Vector2>?>> = LinkedList()
 
             fun findPath(
                 currentPath: List<Vector2>
@@ -291,12 +298,18 @@ fun main(args: Array<String>) {
                 }
 
                 val neighbors = currentSpot.neighbors.sortedBy { currentPath.size < 2 || currentSpot.minus(currentPath[currentPath.lastIndex-1]) != it.minus(currentSpot) }
-                neighbors.filter { isValid(it) }
-                    .forEach {// todo: this was a first not null (executing only for the first neightbor that isValid
-                        queue.add {
-                            findPath(currentPath + it)
+                val validNeighbors = neighbors.filter { isValid(it) }
+                validNeighbors
+                    .forEach {
+                        if (validNeighbors.first() == it) { // todo: this puts the first neighbor always in the top of the queue... i am not sure if thats good (all the time)
+                            queue.addFirst{
+                                findPath(currentPath + it)
+                            }
+                        } else {
+                            queue.add {
+                                findPath(currentPath + it)
+                            }
                         }
-
                     }
                 return null
             }
@@ -314,20 +327,21 @@ fun main(args: Array<String>) {
                     val result = runnable.get()
                     if (result != null) return result!!
                 }
-                return null // todo: there is a bug where the process doesnt find a solution for something that shoud have a solution
-                // todo: actually it was a bug that it was working at all, it just tried the first valid neighbor for each
-                // todo: but this kind of proves that a breadth first algorith that prioritizes earlier changes in the path should work
+                return null
 
             }
 
 
-
-            val path = findPath()
+            val path: List<Vector2>?
+            val millis = measureTimeMillis{
+                path = findPath()
+            }
             if (path == null) {
                 println(lawnRows.joinToString("\n"))
                 println("No path found")
             } else {
-                println("Found path")
+                val time = if (millis > 1000) "${millis/1000} seconds" else "${millis} ms"
+                println("Found path in $time")
                 writer.writeOne(convertPathToString(path))
             }
         }
