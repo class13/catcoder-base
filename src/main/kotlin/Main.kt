@@ -4,6 +4,9 @@ import java.util.Deque
 import java.util.LinkedList
 import java.util.Queue
 import java.util.Timer
+import java.util.concurrent.ConcurrentLinkedDeque
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 import java.util.function.Supplier
 import kotlin.math.absoluteValue
@@ -285,12 +288,17 @@ fun main(args: Array<String>) {
             // todo: so it either returns a path right now or it just spawn new async runnables
 
             val foundPath: AtomicReference<List<Vector2>?> = AtomicReference(null)
-            val queue: Deque<Supplier<List<Vector2>?>> = LinkedList()
+            val queue: Deque<Runnable> = ConcurrentLinkedDeque()
+            val executor = Executors.newFixedThreadPool(8)
 
             fun findPath(
                 currentPath: List<Vector2>
-            ): List<Vector2>? {
-                if (currentPath.toSet() == grassCoords) return currentPath
+            ) {
+                if (currentPath.toSet() == grassCoords) {
+                    foundPath.set(currentPath)
+                    queue.clear()
+                    executor.shutdown()
+                }
                 val currentSpot = currentPath.last()
 
                 fun isValid(coord: Vector2): Boolean {
@@ -311,24 +319,33 @@ fun main(args: Array<String>) {
                             }
                         }
                     }
-                return null
             }
 
-            fun findPath(): List<Vector2>? {
+
+            fun findPath(): List<Vector2> {
                 val allStartingPoints = grassCoords
 
                 allStartingPoints.forEach {
                     queue.add{ findPath(listOf(it)) }
                 }
 
-                while (queue.isNotEmpty()) {
-                    // todo: multithread here
-                    val runnable = queue.poll()
-                    val result = runnable.get()
-                    if (result != null) return result!!
-                }
-                return null
+                repeat(8) {
+                    executor.execute {
+                        while (!executor.isShutdown) {
+                            val runnable = queue.poll()
+                            if (runnable != null) {
+                                runnable.run()
+                            } else {
+                                Thread.sleep(100)
+                            }
+                        }
 
+                    }
+                }
+
+                while (true) {
+                    foundPath.get()?.let { return it }
+                }
             }
 
 
