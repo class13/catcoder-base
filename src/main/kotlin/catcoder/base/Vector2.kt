@@ -1,6 +1,9 @@
 package catcoder.base
 
 import kotlin.math.absoluteValue
+import kotlin.math.acos
+import kotlin.math.sqrt
+import kotlin.time.times
 
 data class Vector2(
     val x: Int,
@@ -71,5 +74,25 @@ data class Vector2(
 
     fun plus(vector2: Vector2): Vector2 {
         return Vector2(this.x + vector2.x, this.y + vector2.y)
+    }
+
+    fun product(vector2: Vector2): Int {
+        val a = this
+        val b = vector2
+
+        return (a.x * b.x) + (a.y + b.y)
+    }
+
+    fun magnitude(): Double {
+        return sqrt(((this.x * this.x) + (this.y * this.y)).toDouble())
+    }
+
+    fun angleTo(vector2: Vector2): Double {
+        val a = this
+        val b = vector2
+
+        val product = a.product(b)
+        val cosAngle = product / (a.magnitude() * b.magnitude())
+        return acos(cosAngle)
     }
 }

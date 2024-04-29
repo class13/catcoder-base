@@ -1,17 +1,8 @@
 import catcoder.base.DirectoryFilesRunner
 import catcoder.base.Vector2
-import java.util.Deque
 import java.util.LinkedList
 import java.util.Queue
-import java.util.Timer
-import java.util.concurrent.ConcurrentLinkedDeque
-import java.util.concurrent.ConcurrentLinkedQueue
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicReference
-import java.util.function.Supplier
-import kotlin.math.absoluteValue
 import kotlin.math.atan2
-import kotlin.math.roundToInt
 import kotlin.system.measureTimeMillis
 
 data class Step(
@@ -185,7 +176,7 @@ fun printForVisualizer(lawnRows: List<String>, path: List<Vector2>) {
 }
 
 fun main(args: Array<String>) {
-    DirectoryFilesRunner("D:\\Projects\\catcoder-base\\src\\main\\resources\\level4_1").forEach { reader, writer ->
+    DirectoryFilesRunner("D:\\Projects\\catcoder-base\\src\\main\\resources\\level4").forEach { reader, writer ->
         println("Processing ${reader.file.name}")
         val numberOfLawns = reader.readOne()[0].toInt()
         (1..numberOfLawns).forEach { lawnIt ->
@@ -258,21 +249,49 @@ fun main(args: Array<String>) {
                 return !others.contains(last) && isGrass(path.last())
             }
 
-            class StandardNode( // todo: this method tries to walk back into the path sometimes
+            class StandardNode(
                 val path: List<Vector2>,
             ): Node {
                 val done by lazy {
                     path.toSet() == grassCoords.toSet()
-                }
-                val valid by lazy {
-                    isValid(path)
                 }
                 val hasBubble by lazy {
                     hasBubbles(path)
                 }
                 val direction = if (path.size > 2) path.last().minus(path[path.lastIndex-1]) else null
                 val neighbors by lazy {
-                    path.last().neighbors
+                    val currentSpot = path.last()
+                    val neighbors = currentSpot.neighbors
+                    val neighborsThatArentBackwards = neighbors.filter { it != path[path.lastIndex-1] }
+                    val validNeighbors = neighborsThatArentBackwards.filter { isValid(path + it) }
+
+                    val currentDirection = if (path.size >= 2) path[path.lastIndex].minus(path[path.lastIndex-1]) else null
+                    val theDirectionBeforeThat = if (path.size >= 3) path[path.lastIndex-1].minus(path[path.lastIndex-2]) else null
+
+                    // we need to make a turn if the last movement was turn to complete the 180 turn of a zig zac pattern
+                    val isTurn = if (currentDirection == null || theDirectionBeforeThat == null) false else currentDirection != theDirectionBeforeThat
+
+                    var sortedNeighbors = validNeighbors
+
+                    if (currentDirection != null) {
+                        sortedNeighbors = sortedNeighbors.sortedByDescending { it == (currentSpot.plus(currentDirection)) }
+                    }
+
+                    if (isTurn) {
+                        val angleOfTurn = theDirectionBeforeThat!!.angleTo(currentDirection!!) // todo: see if that can be made performent because its always 90 degree turns
+                        // should be -90 or 90
+                        // todo: apply the same angle to the current direction
+                        // todo: prioritize that neighbor first
+                    }
+
+                    val sameDirectionNeighbor =
+
+                    // todo: if there was no turn or if the movement in that direction is not possible
+                    // todo: go the same direction as before
+                    // todo: if that doesnt work turn the other way
+                    // todo: here implement smarter prioritization of direction
+                    // first hold same direction
+                    validNeighbors
                 }
 
                 val generationQueue: Queue<Vector2> by lazy {
@@ -283,28 +302,30 @@ fun main(args: Array<String>) {
 
                 override fun nextPath(): List<Vector2>? {
                     if (done) return path
-                    if (!valid) return null
+                    // todo: calculate bubbles somewhere around here
 
+                    // generate nodes as long as the generation Queue is not empty
                     val nodeToWorkOn: Node = if (generationQueue.peek() != null) {
                         StandardNode(path + generationQueue.poll())
-                    } else if (rotationQueue.peek() != null) {
+                    } else if (rotationQueue.peek() != null) { // else pull one from the rotation
                         rotationQueue.poll()
                     } else {
-                        throw Exception("did not have next")
+                        throw Exception("did not have next") // this shouldn't happen because the parent node shouldnt have called this if !hasNext()
                     }
+
                     val result = if (nodeToWorkOn.hasNext()) {
-                        nodeToWorkOn.nextPath()
+                        nodeToWorkOn.nextPath() // either get the nextPath from the the next node
                     } else null
+
                     if (nodeToWorkOn.hasNext()) {
                         rotationQueue.add(nodeToWorkOn)
                     } else {
-                        println(convertPathToString((nodeToWorkOn as StandardNode).path) + " killed.")
+                        // println(convertPathToString((nodeToWorkOn as StandardNode).path) + " killed.")
                     }
                     return result
                 }
 
                 override fun hasNext(): Boolean {
-                    if (!valid) return false
                     return  done || generationQueue.peek() != null || rotationQueue.peek() != null
                 }
 
