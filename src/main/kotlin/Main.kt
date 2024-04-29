@@ -54,44 +54,6 @@ data class Step(
 
 }
 
-data class Path(
-    val coords: List<Vector2>
-) {
-    val size = coords.size
-    val steps = (0..<(coords.size-1)).map {
-        Step(coords[it], coords[it + 1])
-    }
-    val loopSteps = steps + Step(coords.last(), coords.first())
-    fun isTileVisitedTwice(): Boolean {
-        return coords.groupBy { it }.any { it.value.size > 1 }
-    }
-
-    fun isAnyCrossing(): Boolean {
-        (0..<steps.size-1).forEach { i ->
-            (i+1..<steps.size).forEach { j ->
-                if (steps[i].isCrossing(steps[j])) return true
-            }
-        }
-        return false
-    }
-
-    fun isValid (): Boolean {
-        return !isTileVisitedTwice() && !isAnyCrossing()
-    }
-
-    fun add(coord: Vector2): Path {
-        return Path(coords + coord)
-
-    }
-
-    fun isInside(coord: Vector2): Boolean {
-        val angleTotal = loopSteps.sumOf { it.calculateAngleToReferencePoint(coord) }
-        return angleTotal.roundToInt().absoluteValue % 360 == 0
-    }
-
-
-}
-
 fun main1(args: Array<String>) {
     DirectoryFilesRunner("C:\\Users\\Lucky13\\IdeaProjects\\catcoder-base\\src\\main\\resources\\level1").forEach { reader, writer ->
         val numberLines = reader.readOne()[0].toInt()
@@ -281,77 +243,91 @@ fun main(args: Array<String>) {
                 return grassCoords.contains(coord)
             }
 
+            fun isValid(path: List<Vector2>, next: Vector2): Boolean {
+                printForVisualizer(lawnRows, (path+next))
+                return !path.contains(next) && isGrass(next) && !hasBubbles(path + next)
+            }
 
-
-
-            // todo: can i make the recursive findPath function to a async runnable?
-            // todo: so it either returns a path right now or it just spawn new async runnables
-
-            val foundPath: AtomicReference<List<Vector2>?> = AtomicReference(null)
-            val queue: Deque<Runnable> = ConcurrentLinkedDeque()
-            val executor = Executors.newFixedThreadPool(8)
-
-            fun findPath(
-                currentPath: List<Vector2>
-            ) {
-                if (currentPath.toSet() == grassCoords) {
-                    foundPath.set(currentPath)
-                    queue.clear()
-                    executor.shutdown()
-                }
-                val currentSpot = currentPath.last()
-
-                fun isValid(coord: Vector2): Boolean {
-                    return !currentPath.contains(coord) && isGrass(coord) && !hasBubbles(currentPath + coord)
+            class StandardNode( // todo: this method tries to walk back into the path sometimes
+                val parent: StandardNode? = null,
+                val path: List<Vector2>,
+            ): Node {
+                val direction = if (path.size > 2) path.last().minus(path[path.lastIndex-1]) else null
+                val validNext: List<Vector2> by lazy {
+                    path.last().neighbors.filter { !path.contains(it) && isGrass(it) }
                 }
 
-                val neighbors = currentSpot.neighbors.sortedBy { currentPath.size < 2 || currentSpot.minus(currentPath[currentPath.lastIndex-1]) != it.minus(currentSpot) }
-                val validNeighbors = neighbors.filter { isValid(it) }
-                validNeighbors
-                    .forEach {
-                        if (validNeighbors.first() == it) { // todo: this puts the first neighbor always in the top of the queue... i am not sure if thats good (all the time)
-                            queue.addFirst{
-                                findPath(currentPath + it)
-                            }
+                val children by lazy {
+                    validNext.map { StandardNode(this, path + it) }.sortedBy { it.path.last().minus(path.last()) != direction }
+                }
+                val childrenQueue by lazy {
+                    LinkedList(children)
+                }
+
+                val isLeaf by lazy {
+                    children.isEmpty()
+                }
+                var isLeafChecked = false
+                override fun nextPath(): List<Vector2>? {
+                    if (isLeaf) {
+                        isLeafChecked = true
+                        return if (isValid(path.subList(0, path.lastIndex), path.last()) && path.toSet() == grassCoords ) {
+                            path
                         } else {
-                            queue.add {
-                                findPath(currentPath + it)
-                            }
+                            null
                         }
                     }
+
+                    val poll = childrenQueue.poll() ?: return null
+                    val nextPath = poll.nextPath()
+                    if (poll.hasNext()) {
+                        childrenQueue.add(poll)
+                    }
+                    return nextPath
+                }
+
+                override fun hasNext(): Boolean {
+                    if (isLeafChecked) return false
+                    return childrenQueue.peek() != null
+                }
+
+
             }
 
 
-            fun findPath(): List<Vector2> {
-                val allStartingPoints = grassCoords
 
-                allStartingPoints.forEach {
-                    queue.add{ findPath(listOf(it)) }
-                }
 
-                repeat(8) {
-                    executor.execute {
-                        while (!executor.isShutdown) {
-                            val runnable = queue.poll()
-                            if (runnable != null) {
-                                runnable.run()
-                            } else {
-                                Thread.sleep(100)
-                            }
-                        }
 
+
+
+            class RootNode(
+            ): Node {
+                val children = grassCoords.map { StandardNode(null, listOf(it)) }
+                val childrenQueue = LinkedList(children)
+
+                override fun nextPath(): List<Vector2>? {
+                    val poll = childrenQueue.poll() ?: return null
+                    val nextPath = poll.nextPath()
+                    if (poll.hasNext()) {
+                        childrenQueue.add(poll)
                     }
+                    return nextPath
                 }
 
-                while (true) {
-                    foundPath.get()?.let { return it }
+                override fun hasNext(): Boolean {
+                    return childrenQueue.peek() != null
                 }
+
+
             }
 
+            val rootNode = RootNode()
+            var path: List<Vector2>? = null
 
-            val path: List<Vector2>?
             val millis = measureTimeMillis{
-                path = findPath()
+                while (path==null && rootNode.hasNext()) {
+                    path = rootNode.nextPath()
+                }
             }
             if (path == null) {
                 println(lawnRows.joinToString("\n"))
@@ -359,10 +335,39 @@ fun main(args: Array<String>) {
             } else {
                 val time = if (millis > 1000) "${millis/1000} seconds" else "${millis} ms"
                 println("Found path in $time")
-                writer.writeOne(convertPathToString(path))
+                writer.writeOne(convertPathToString(path!!))
             }
+
+            // make nodes connected
+            // node can provide next possible node
+
+
+
         }
 
     }
 }
+
+abstract class AbstractNode(
+): Node {
+    var iterator = 0
+
+    abstract fun children(): List<Node>
+    fun nextChild(): Node {
+        val children = children()
+        val nextChild = children[iterator]
+        iterator ++
+        iterator -= children.lastIndex
+        return nextChild
+    }
+
+}
+
+interface Path{}
+
+interface Node {
+    fun nextPath(): List<Vector2>?
+    fun hasNext(): Boolean
+}
+
 
