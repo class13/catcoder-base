@@ -175,7 +175,8 @@ fun <T> toLinkList(list: List<T>): List<Pair<T, T>> {
 
 fun convertPathToString(path: List<Vector2>): String {
     val steps = toLinkList(path)
-    return steps.map { it.second.minus(it.first) }.map { reverseDirectionMap[it]!! }.joinToString("")
+    val firstCoord = path.first()
+    return "${firstCoord} " + steps.map { it.second.minus(it.first) }.map { reverseDirectionMap[it]!! }.joinToString("")
 }
 
 fun printForVisualizer(lawnRows: List<String>, path: List<Vector2>) {
@@ -184,7 +185,7 @@ fun printForVisualizer(lawnRows: List<String>, path: List<Vector2>) {
 }
 
 fun main(args: Array<String>) {
-    DirectoryFilesRunner("D:\\Projects\\catcoder-base\\src\\main\\resources\\level4").forEach { reader, writer ->
+    DirectoryFilesRunner("D:\\Projects\\catcoder-base\\src\\main\\resources\\level4_1").forEach { reader, writer ->
         println("Processing ${reader.file.name}")
         val numberOfLawns = reader.readOne()[0].toInt()
         (1..numberOfLawns).forEach { lawnIt ->
@@ -248,47 +249,63 @@ fun main(args: Array<String>) {
                 return !path.contains(next) && isGrass(next) && !hasBubbles(path + next)
             }
 
+            fun isValid(path: List<Vector2>): Boolean {
+                //printForVisualizer(lawnRows, path)
+
+                val last = path.last()
+                val others = path.subList(0, path.lastIndex)
+
+                return !others.contains(last) && isGrass(path.last())
+            }
+
             class StandardNode( // todo: this method tries to walk back into the path sometimes
-                val parent: StandardNode? = null,
                 val path: List<Vector2>,
             ): Node {
+                val done by lazy {
+                    path.toSet() == grassCoords.toSet()
+                }
+                val valid by lazy {
+                    isValid(path)
+                }
+                val hasBubble by lazy {
+                    hasBubbles(path)
+                }
                 val direction = if (path.size > 2) path.last().minus(path[path.lastIndex-1]) else null
-                val validNext: List<Vector2> by lazy {
-                    path.last().neighbors.filter { !path.contains(it) && isGrass(it) }
+                val neighbors by lazy {
+                    path.last().neighbors
                 }
 
-                val children by lazy {
-                    validNext.map { StandardNode(this, path + it) }.sortedBy { it.path.last().minus(path.last()) != direction }
-                }
-                val childrenQueue by lazy {
-                    LinkedList(children)
+                val generationQueue: Queue<Vector2> by lazy {
+                    LinkedList(neighbors)
                 }
 
-                val isLeaf by lazy {
-                    children.isEmpty()
-                }
-                var isLeafChecked = false
+                val rotationQueue: Queue<Node> = LinkedList()
+
                 override fun nextPath(): List<Vector2>? {
-                    if (isLeaf) {
-                        isLeafChecked = true
-                        return if (isValid(path.subList(0, path.lastIndex), path.last()) && path.toSet() == grassCoords ) {
-                            path
-                        } else {
-                            null
-                        }
-                    }
+                    if (done) return path
+                    if (!valid) return null
 
-                    val poll = childrenQueue.poll() ?: return null
-                    val nextPath = poll.nextPath()
-                    if (poll.hasNext()) {
-                        childrenQueue.add(poll)
+                    val nodeToWorkOn: Node = if (generationQueue.peek() != null) {
+                        StandardNode(path + generationQueue.poll())
+                    } else if (rotationQueue.peek() != null) {
+                        rotationQueue.poll()
+                    } else {
+                        throw Exception("did not have next")
                     }
-                    return nextPath
+                    val result = if (nodeToWorkOn.hasNext()) {
+                        nodeToWorkOn.nextPath()
+                    } else null
+                    if (nodeToWorkOn.hasNext()) {
+                        rotationQueue.add(nodeToWorkOn)
+                    } else {
+                        println(convertPathToString((nodeToWorkOn as StandardNode).path) + " killed.")
+                    }
+                    return result
                 }
 
                 override fun hasNext(): Boolean {
-                    if (isLeafChecked) return false
-                    return childrenQueue.peek() != null
+                    if (!valid) return false
+                    return  done || generationQueue.peek() != null || rotationQueue.peek() != null
                 }
 
 
@@ -302,7 +319,7 @@ fun main(args: Array<String>) {
 
             class RootNode(
             ): Node {
-                val children = grassCoords.map { StandardNode(null, listOf(it)) }
+                val children = grassCoords.map { StandardNode(listOf(it)) }
                 val childrenQueue = LinkedList(children)
 
                 override fun nextPath(): List<Vector2>? {
