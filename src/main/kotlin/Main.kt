@@ -2,6 +2,7 @@ import catcoder.base.DirectoryFilesRunner
 import catcoder.base.Vector2
 import java.util.LinkedList
 import java.util.Queue
+import kotlin.math.absoluteValue
 import kotlin.math.atan2
 import kotlin.system.measureTimeMillis
 
@@ -259,10 +260,10 @@ fun main(args: Array<String>) {
                     hasBubbles(path)
                 }
                 val direction = if (path.size > 2) path.last().minus(path[path.lastIndex-1]) else null
-                val neighbors by lazy {
+                val neighbors: List<Vector2> by lazy {
                     val currentSpot = path.last()
                     val neighbors = currentSpot.neighbors
-                    val neighborsThatArentBackwards = neighbors.filter { it != path[path.lastIndex-1] }
+                    val neighborsThatArentBackwards = neighbors.filter { path.size < 2 || it != path[path.lastIndex-1] }
                     val validNeighbors = neighborsThatArentBackwards.filter { isValid(path + it) }
 
                     val currentDirection = if (path.size >= 2) path[path.lastIndex].minus(path[path.lastIndex-1]) else null
@@ -278,20 +279,14 @@ fun main(args: Array<String>) {
                     }
 
                     if (isTurn) {
-                        val angleOfTurn = theDirectionBeforeThat!!.angleTo(currentDirection!!) // todo: see if that can be made performent because its always 90 degree turns
-                        // should be -90 or 90
-                        // todo: apply the same angle to the current direction
-                        // todo: prioritize that neighbor first
+                        val rotation = Vector2.Directions.angleBetween(theDirectionBeforeThat!!, currentDirection!!) // todo: see if that can be made performent because its always 90 degree turns
+                        if (rotation.absoluteValue.toInt() != 1) throw Exception() // should be -90 or 90
+
+                        val turnDirection = Vector2.Directions.rotate(currentDirection, rotation)
+                        sortedNeighbors = sortedNeighbors.sortedByDescending { it == (currentSpot.plus(turnDirection)) }
                     }
 
-                    val sameDirectionNeighbor =
-
-                    // todo: if there was no turn or if the movement in that direction is not possible
-                    // todo: go the same direction as before
-                    // todo: if that doesnt work turn the other way
-                    // todo: here implement smarter prioritization of direction
-                    // first hold same direction
-                    validNeighbors
+                    sortedNeighbors
                 }
 
                 val generationQueue: Queue<Vector2> by lazy {
@@ -320,7 +315,7 @@ fun main(args: Array<String>) {
                     if (nodeToWorkOn.hasNext()) {
                         rotationQueue.add(nodeToWorkOn)
                     } else {
-                        // println(convertPathToString((nodeToWorkOn as StandardNode).path) + " killed.")
+                       // println(convertPathToString((nodeToWorkOn as StandardNode).path) + " killed.")
                     }
                     return result
                 }

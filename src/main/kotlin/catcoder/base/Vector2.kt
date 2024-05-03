@@ -45,6 +45,37 @@ data class Vector2(
             )
             val ALL = CARDINAL + INTERCARDINAL
 
+            val ROTATION = listOf(UP, RIGHT, DOWN, LEFT)
+
+            fun angleBetween(directionA: Vector2, directionB: Vector2): Int { // unit is amount of 90 degrees
+                val aIndex = ROTATION.indexOf(directionA) // 3
+                val bIndex = ROTATION.indexOf(directionB) // 0
+
+                val diff = bIndex - aIndex
+
+                return diff.let {
+                    if (it.absoluteValue == 3) { // if three turns you can also do a rotation of one in the other direction
+                        (it / -3)
+                    } else {
+                        it
+                    }
+                }
+            }
+
+            fun rotate(direction: Vector2, rotation: Int): Vector2 {
+                val index = ROTATION.indexOf(direction)
+                val normalizedIndex = (index + rotation).let {
+                    var normalized = it
+                    while (normalized < 0) {
+                        normalized = ROTATION.lastIndex - normalized
+                    }
+                    normalized
+                }.let {
+                    it % ROTATION.size
+                }
+                return ROTATION[normalizedIndex]
+            }
+
         }
     }
 
@@ -80,7 +111,7 @@ data class Vector2(
         val a = this
         val b = vector2
 
-        return (a.x * b.x) + (a.y + b.y)
+        return (a.x * b.x) + (a.y * b.y)
     }
 
     fun magnitude(): Double {
@@ -93,6 +124,6 @@ data class Vector2(
 
         val product = a.product(b)
         val cosAngle = product / (a.magnitude() * b.magnitude())
-        return acos(cosAngle)
+        return acos(cosAngle) * (180 / Math.PI)
     }
 }
