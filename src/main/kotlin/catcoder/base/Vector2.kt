@@ -3,7 +3,6 @@ package catcoder.base
 import kotlin.math.absoluteValue
 import kotlin.math.acos
 import kotlin.math.sqrt
-import kotlin.time.times
 
 data class Vector2(
     val x: Int,
@@ -77,13 +76,8 @@ data class Vector2(
                 }.let {
                     it % ROTATION.size
                 }
-                val returnedRotation = ROTATION[normalizedIndex]
 
-                if (returnedRotation == direction) {
-                    throw Exception("rotation failed")
-                }
-
-                return returnedRotation
+                return ROTATION[normalizedIndex]
             }
 
         }
