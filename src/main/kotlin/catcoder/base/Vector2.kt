@@ -63,17 +63,27 @@ data class Vector2(
             }
 
             fun rotate(direction: Vector2, rotation: Int): Vector2 {
+                if (rotation == 0) {
+                    println("No rotation is necessary with 0.")
+                    return direction
+                }
                 val index = ROTATION.indexOf(direction)
                 val normalizedIndex = (index + rotation).let {
                     var normalized = it
                     while (normalized < 0) {
-                        normalized = ROTATION.lastIndex - normalized
+                        normalized = ROTATION.lastIndex + normalized
                     }
                     normalized
                 }.let {
                     it % ROTATION.size
                 }
-                return ROTATION[normalizedIndex]
+                val returnedRotation = ROTATION[normalizedIndex]
+
+                if (returnedRotation == direction) {
+                    throw Exception("rotation failed")
+                }
+
+                return returnedRotation
             }
 
         }
