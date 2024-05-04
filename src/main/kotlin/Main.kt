@@ -39,6 +39,9 @@ data class Lawn(
     }.associate { it }
     val pointOfTree = pointToTileMap.entries.first { it.value == LawnTile.TREE }.key
     val pointsOfGrass = pointToTileMap.entries.filter { it.value == LawnTile.GRASS }.map { it.key }.toSet()
+    val pointsOfBorder = pointsOfGrass.filter { it.x == 0 || it.y == 0 || it.x == maxX || it.y == maxY }
+    val pointsOfCorner = pointsOfGrass.filter { (it.x == 0 || it.x == maxX) && (it.y == 0 || it.y == maxY) }
+
 
     fun inBounds(point: Vector2): Boolean {
         if (point.x < 0 || point.y < 0) return false
@@ -87,7 +90,8 @@ class RootNode(
     lawn: Lawn
 ): AbstractNode(lawn) {
     init {
-        lawn.pointsOfGrass.forEach { startingPoint ->
+        val startingPoints = lawn.pointsOfCorner // seemingly if there is a solution there is a solution that starts at a corner
+        startingPoints.forEach { startingPoint ->
             queue.add {
                 StartNode(lawn, startingPoint)
             }
@@ -207,7 +211,7 @@ class RegularNode(
             val createsBubbles = {
                 hasBubbles(lawn, currentPath + nextPoint)
             }
-
+            // todo: this must be done only until the first valid node is found. dont do the other paths as well
             if (
                 !hitsTree() &&
                 !leavesField() &&
