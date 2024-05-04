@@ -187,17 +187,14 @@ class RegularNode(
         if (spin != Spin.LEFT) spins.add(Spin.LEFT)
         spins.toList()
     }
+    val innerQueue: Queue<Spin> = LinkedList(sortedSpins)
     var finishedPath: List<Vector2>? = null
 
     override fun getPath(): List<Vector2>? {
         if (finishedPath != null) return finishedPath
-        return super.getPath()
-    }
-
-    init {
-        //println(convertPathToString(path = currentPath))
-        sortedSpins.forEach { spin ->
-            val direction = if (spin == Spin.STRAIGHT) this.direction else this.direction.let { spin.applyTo(it) }
+        while(innerQueue.isNotEmpty()) {
+            val spinToValidate = innerQueue.poll()
+            val direction = if (spinToValidate == Spin.STRAIGHT) this.direction else this.direction.let { spinToValidate.applyTo(it) }
             val nextPoint = currentPath.last().plus(direction)
             val hitsTree = {
                 nextPoint == lawn.pointOfTree
@@ -211,7 +208,6 @@ class RegularNode(
             val createsBubbles = {
                 hasBubbles(lawn, currentPath + nextPoint)
             }
-            // todo: this must be done only until the first valid node is found. dont do the other paths as well
             if (
                 !hitsTree() &&
                 !leavesField() &&
@@ -219,18 +215,22 @@ class RegularNode(
                 !createsBubbles()
             ) {
                 if (lawn.pointsOfGrass.size == (currentPath + 1).size) {
-                    finishedPath = currentPath + nextPoint
-                    terminated = true
-                    queue.clear()
+                    return currentPath + nextPoint
                 } else {
-                    queue.add{
-                        val path = this.currentPath + nextPoint
-                        RegularNode(lawn, path, direction, spin)
+                    val path = this.currentPath + nextPoint
+                    val newNode = RegularNode(lawn, path, direction, spinToValidate)
+                    assert(!newNode.terminated)
+                    val result = newNode.getPath()
+                    if (result == null && !newNode.terminated) {
+                        queue.add{ newNode }
                     }
+                    return result
+
                 }
 
             }
         }
+        return super.getPath()
     }
 }
 
