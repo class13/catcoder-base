@@ -2,70 +2,156 @@ import catcoder.base.DirectoryFilesRunner
 import catcoder.base.Vector2
 import java.util.LinkedList
 import java.util.Queue
-import kotlin.math.absoluteValue
-import kotlin.math.atan2
+import java.util.function.Supplier
 import kotlin.system.measureTimeMillis
 
-data class Step(
-    val coordA: Vector2,
-     val coordB: Vector2
+
+fun findPathForLawn() {
+
+}
+
+enum class LawnTile {
+    GRASS, TREE;
+
+    companion object {
+        fun valueOf(char: Char): LawnTile {
+            if (char == '.') {
+                return GRASS
+            } else {
+                return TREE
+            }
+        }
+    }
+}
+data class Lawn(
+    val rows: List<String>,
 ) {
-    val coords = listOf(coordA, coordB)
-    val isDiagonal = coordA.x != coordB.x && coordA.y != coordB.y
+    val height = rows.size
+    val width = rows.first().length
+    val maxY = height-1
+    val maxX = width-1
+    val pointToTileMap: Map<Vector2, LawnTile> = rows.flatMapIndexed { rowIndex, row ->
+        row.mapIndexed() { indexSymbol, symbol ->
+            val y = height - 1 - rowIndex
+            val x = indexSymbol
+            Pair(Vector2(x, y), symbol.let { LawnTile.valueOf(it) })
+        }
+    }.associate { it }
+    val pointOfTree = pointToTileMap.entries.first { it.value == LawnTile.TREE }.key
+    val pointsOfGrass = pointToTileMap.entries.filter { it.value == LawnTile.GRASS }.map { it.key }.toSet()
 
-
-
-
-    fun isCrossing(step: Step): Boolean {
-        if (!step.isDiagonal || !this.isDiagonal) return false
-        val allCoords = (this.coords + step.coords).toSet()
-        val normalPoint = Vector2(allCoords.minOf { it.x }, allCoords.minOf { it.y })
-        val allCoordsNormalized = allCoords.map { it.minus(normalPoint) }.toSet()
-        val square = setOf(
-            Vector2(0, 0),
-            Vector2(0, 1),
-            Vector2(1, 0),
-            Vector2(1, 1),
-        )
-        return square == allCoordsNormalized
+    fun inBounds(point: Vector2): Boolean {
+        if (point.x < 0 || point.y < 0) return false
+        if (point.x > maxX || point.y > maxY) return false
+        return true
     }
 
-    fun subtractAngles(angle1: Double, angle2: Double): Double {
-        var result = angle1 - angle2
+    fun print() {
+        rows.joinToString("\n").let { println(it) }
+    }
+}
 
+enum class Spin(val rotationValue: Int) { // rotationValue is given in units of 90 degree turns, so possible values is -1, 0, 1 (2 would be a 180 degree turn)
+    LEFT(-1), STRAIGHT(0), RIGHT(1);
+
+    fun applyTo(direction: Vector2): Vector2 {
+        return Vector2.Directions.rotate(direction, rotationValue)
+    }
+}
+
+abstract class AbstractNode(
+    val lawn: Lawn
+) {
+    val queue: Queue<Supplier<AbstractNode>> = LinkedList()
+    var terminated = false
+
+    open fun getPath(): List<Vector2>? {
+        if (terminated) {
+            println("WARN: do not call a terminated node")
+            return null
+        }
+        if (queue.isEmpty()) {
+            terminated = true
+            return null
+        }
+        val childNode = queue.poll().get()
+        val result = childNode.getPath()
+        if (!childNode.terminated) {
+            queue.add{ childNode }
+        }
         return result
     }
-
-    fun calculateAngleToReferencePoint(coord: Vector2): Double {
-        val deltaAX = coord.x - coordA.x
-        val deltaAY = coord.y - coordA.y
-        val deltaBX = coord.x - coordB.x
-        val deltaBY = coord.y - coordB.y
-        return subtractAngles(Math.toDegrees(atan2(deltaAX.toDouble(), deltaAY.toDouble())), Math.toDegrees(atan2(deltaBX.toDouble(), deltaBY.toDouble())))
-    }
-
 }
 
-fun main1(args: Array<String>) {
-    DirectoryFilesRunner("C:\\Users\\Lucky13\\IdeaProjects\\catcoder-base\\src\\main\\resources\\level1").forEach { reader, writer ->
-        val numberLines = reader.readOne()[0].toInt()
-        (1.. numberLines).forEach {
-            val line = reader.readOne()[0]
-            val map = line.groupBy { it }.mapValues { it.value.size }
-            val counts = listOf(
-                map['W'] ?: 0,
-                map['D'] ?: 0,
-                map['S'] ?: 0,
-                map['A'] ?: 0,
-            )
-           val result = counts.joinToString(" ")
-            println(result)
-            writer.writeOne(result)
+class RootNode(
+    lawn: Lawn
+): AbstractNode(lawn) {
+    init {
+        lawn.pointsOfGrass.forEach { startingPoint ->
+            queue.add {
+                StartNode(lawn, startingPoint)
+            }
         }
-
     }
 }
 
+class StartNode(
+    lawn: Lawn,
+    val startPoint: Vector2,
+): AbstractNode(lawn) {
+    init {
+        Vector2.Directions.CARDINAL.forEach { direction ->
+            val nextPoint = startPoint.plus(direction)
+            val hitsTree = {
+                nextPoint == lawn.pointOfTree
+            }
+            val leavesField = {
+                !lawn.inBounds(nextPoint)
+            }
+
+            if (!hitsTree() && !leavesField()) {
+                queue.add {
+                    val path = listOf(startPoint, nextPoint)
+                    RegularNode(lawn, path, direction, Spin.STRAIGHT)
+                }
+            }
+        }
+    }
+}
+
+fun hasBubbles(lawn: Lawn, path: List<Vector2>): Boolean {
+    val currentCoord = path.last()
+    val remainingCoords = lawn.pointsOfGrass.minus(path.toSet())
+
+    // splitting bubbles can only be possible if there are exactly 2 neighbors that are remaining grass fields
+    val bubbleSplitIsPossible = currentCoord.neighbors.filter { remainingCoords.contains(it) }.size == 2
+    if (!bubbleSplitIsPossible) return false
+
+    // calculating actual bubbles is pretty expensive
+    val bubbles: MutableSet<Set<Vector2>> = mutableSetOf()
+    remainingCoords.forEach { coord ->
+        val neighboringBubbles = bubbles.filter { bubble ->
+            coord.neighbors.any { coordNeighbor -> bubble.contains(coordNeighbor) }
+        }
+        // create a new bubble
+        val bubble = mutableSetOf<Vector2>()
+        // merge all neighboring bubbles into that new bubble (means removing existing bubbles from the list)
+        neighboringBubbles.forEach {
+            bubbles.remove(it)
+            bubble.addAll(it)
+        }
+        bubble.add(coord)
+        bubbles.add(bubble)
+    }
+
+    return bubbles.size > 1
+}
+
+fun <T> toLinkList(list: List<T>): List<Pair<T, T>> {
+    return (1..list.lastIndex).map {
+        Pair(list[it-1], list[it])
+    }
+}
 val directionMap = mapOf(
     Pair('W', Vector2(0, 1)),
     Pair('S', Vector2(0, -1)),
@@ -75,105 +161,77 @@ val directionMap = mapOf(
 
 val reverseDirectionMap = directionMap.entries.associate { Pair(it.value, it.key) }
 
-fun main2(args: Array<String>) {
-    DirectoryFilesRunner("C:\\Users\\Lucky13\\IdeaProjects\\catcoder-base\\src\\main\\resources\\level2").forEach { reader, writer ->
-        val numberLines = reader.readOne()[0].toInt()
-        (1.. numberLines).forEach {
-            val line = reader.readOne()[0]
-            val currentCoord = Vector2(0, 0)
-            val allCoords = mutableListOf(currentCoord)
-            line.forEach { symbol ->
-                allCoords.add(
-                    allCoords.last().plus(directionMap[symbol]!!)
-                )
-            }
-            val maxX = allCoords.map { it.x }.max()
-            val minX = allCoords.map { it.x }.min()
-            val maxY = allCoords.map { it.y }.max()
-            val minY = allCoords.map { it.y }.min()
-
-            val absX = maxX-minX + 1
-            val absY = maxY-minY + 1
-
-            val result = "$absX $absY"
-            println(result)
-            writer.writeOne(result)
-
-
-        }
-
-    }
-}
-
-fun main3(args: Array<String>) {
-    DirectoryFilesRunner("C:\\Users\\Lucky13\\IdeaProjects\\catcoder-base\\src\\main\\resources\\level3").forEach { reader, writer ->
-        val numberOfLawns = reader.readOne()[0].toInt()
-        (1..numberOfLawns).forEach { lawnIt ->
-            val lawnSize = reader.readOne()
-            val lawnWidth = lawnSize[0].toInt()
-            val lawnHeight = lawnSize[1].toInt()
-
-            val lawnRows = mutableListOf<String>()
-            (1..lawnHeight).forEach { lawnRowIt ->
-                lawnRows.add(reader.readOne()[0])
-            }
-            val pathSymbols = reader.readOne()[0]
-
-            val currentCoord = Vector2(0, 0)
-            val allPathCoordsRelative = mutableListOf(currentCoord)
-            pathSymbols.forEach { symbol ->
-                allPathCoordsRelative.add(
-                    allPathCoordsRelative.last().plus(directionMap[symbol]!!)
-                )
-            }
-
-            val minX = allPathCoordsRelative.map { it.x }.min()
-            val minY = allPathCoordsRelative.map { it.y }.min()
-            val relativeZero = Vector2(minX, minY)
-
-            val allPathCoordsAbsolute = allPathCoordsRelative.map {
-                it.minus(relativeZero)
-            }
-
-            val lawnCoords = mutableMapOf<Vector2, Char>()
-            lawnRows.forEachIndexed { rowIndex, row ->
-                row.forEachIndexed { indexSymbol, symbol ->
-                    val y = lawnHeight - 1 - rowIndex
-                    val x = indexSymbol
-                    lawnCoords[Vector2(x, y)] = symbol
-                }
-            }
-
-            val allDrivableLawnCoords = lawnCoords.entries.filter { it.value != 'X' }.map { it.key }.toSet()
-
-            val allDrivableLawnCoordsHaveBeenEntered = allDrivableLawnCoords == allPathCoordsAbsolute.toSet()
-            val noCrossings = allPathCoordsAbsolute.size == allPathCoordsAbsolute.toSet().size
-
-            val result = if (allDrivableLawnCoordsHaveBeenEntered && noCrossings) "VALID" else "INVALID"
-            println(result)
-
-            writer.writeOne(result)
-        }
-
-    }
-}
-
-fun <T> toLinkList(list: List<T>): List<Pair<T, T>> {
-    return (1..list.lastIndex).map {
-        Pair(list[it-1], list[it])
-    }
-
-}
-
 fun convertPathToString(path: List<Vector2>): String {
     val steps = toLinkList(path)
     val firstCoord = path.first()
     return "${firstCoord} " + steps.map { it.second.minus(it.first) }.map { reverseDirectionMap[it]!! }.joinToString("")
 }
 
-fun printForVisualizer(lawnRows: List<String>, path: List<Vector2>) {
-    println(lawnRows.joinToString("\n"))
-    println(convertPathToString(path))
+class RegularNode(
+    lawn: Lawn,
+    val currentPath: List<Vector2>,
+    val direction: Vector2,
+    val spin: Spin
+): AbstractNode(lawn) {
+    val sortedSpins: List<Spin> = run {
+        val spins: MutableList<Spin> = mutableListOf()
+        if (spin != Spin.STRAIGHT) {
+            spins.add(spin)
+        }
+        spins.add(Spin.STRAIGHT)
+        if (spin != Spin.RIGHT) spins.add(Spin.RIGHT)
+        if (spin != Spin.LEFT) spins.add(Spin.LEFT)
+        spins.toList()
+    }
+    var finishedPath: List<Vector2>? = null
+
+    override fun getPath(): List<Vector2>? {
+        if (finishedPath != null) return finishedPath
+        return super.getPath()
+    }
+
+    init {
+        //println(convertPathToString(path = currentPath))
+        sortedSpins.forEach { spin ->
+            val direction = if (spin == Spin.STRAIGHT) this.direction else this.direction.let { spin.applyTo(it) }
+            val nextPoint = currentPath.last().plus(direction)
+            val hitsTree = {
+                nextPoint == lawn.pointOfTree
+            }
+            val leavesField = {
+                !lawn.inBounds(nextPoint)
+            }
+            val crossesItself = {
+                currentPath.toSet().contains(nextPoint)
+            }
+            val createsBubbles = {
+                hasBubbles(lawn, currentPath + nextPoint)
+            }
+
+            if (
+                !hitsTree() &&
+                !leavesField() &&
+                !crossesItself() &&
+                !createsBubbles()
+            ) {
+                if (lawn.pointsOfGrass.size == (currentPath + 1).size) {
+                    finishedPath = currentPath + nextPoint
+                    terminated = true
+                    queue.clear()
+                } else {
+                    queue.add{
+                        val path = this.currentPath + nextPoint
+                        RegularNode(lawn, path, direction, spin)
+                    }
+                }
+
+            }
+        }
+    }
+}
+
+fun findPath(lawn: Lawn) {
+
 }
 
 fun main(args: Array<String>) {
@@ -193,214 +251,22 @@ fun main(args: Array<String>) {
                 lawnRows.add(reader.readOne()[0])
             }
 
-            val lawnCoords = mutableMapOf<Vector2, Char>()
-            lawnRows.forEachIndexed { rowIndex, row ->
-                row.forEachIndexed { indexSymbol, symbol ->
-                    val y = lawnHeight - 1 - rowIndex
-                    val x = indexSymbol
-                    lawnCoords[Vector2(x, y)] = symbol
-                }
-            }
+            val lawn = Lawn(lawnRows)
+            lawn.print()
 
-            val grassCoords = lawnCoords.filter { it.value == '.' }.map { it.key }.toSet()
-
-            fun hasBubbles(path: List<Vector2>): Boolean {
-                val currentCoord = path.last()
-                val remainingCoords = grassCoords.minus(path.toSet())
-
-                // splitting bubbles can only be possible if there are exactly 2 neighbors that are remaining grass fields
-                val bubbleSplitIsPossible = currentCoord.neighbors.filter { remainingCoords.contains(it) }.size == 2
-                if (!bubbleSplitIsPossible) return false
-
-                // calculating actual bubbles is pretty expensive
-                val bubbles: MutableSet<Set<Vector2>> = mutableSetOf()
-                remainingCoords.forEach { coord ->
-                    val neighboringBubbles = bubbles.filter { bubble ->
-                        coord.neighbors.any { coordNeighbor -> bubble.contains(coordNeighbor) }
-                    }
-                    // create a new bubble
-                    val bubble = mutableSetOf<Vector2>()
-                    // merge all neighboring bubbles into that new bubble (means removing existing bubbles from the list)
-                    neighboringBubbles.forEach {
-                        bubbles.remove(it)
-                        bubble.addAll(it)
-                    }
-                    bubble.add(coord)
-                    bubbles.add(bubble)
-                }
-
-                return bubbles.size > 1
-            }
-
-            fun isGrass(coord: Vector2): Boolean {
-                return grassCoords.contains(coord)
-            }
-
-            fun isValid(path: List<Vector2>, next: Vector2): Boolean {
-                printForVisualizer(lawnRows, (path+next))
-                return !path.contains(next) && isGrass(next) && !hasBubbles(path + next)
-            }
-
-            fun isValid(path: List<Vector2>): Boolean {
-                //printForVisualizer(lawnRows, path)
-
-                val last = path.last()
-                val others = path.subList(0, path.lastIndex)
-
-                return !others.contains(last) && isGrass(path.last())
-            }
-
-            class StandardNode(
-                val path: List<Vector2>,
-            ): Node {
-                val done by lazy {
-                    path.toSet() == grassCoords.toSet()
-                }
-                val hasBubble by lazy {
-                    hasBubbles(path)
-                }
-                val direction = if (path.size > 2) path.last().minus(path[path.lastIndex-1]) else null
-                val neighbors: List<Vector2> by lazy {
-                    val currentSpot = path.last()
-                    val neighbors = currentSpot.neighbors
-                    val neighborsThatArentBackwards = neighbors.filter { path.size < 2 || it != path[path.lastIndex-1] }
-                    val validNeighbors = neighborsThatArentBackwards.filter { isValid(path + it) }
-
-                    val currentDirection = if (path.size >= 2) path[path.lastIndex].minus(path[path.lastIndex-1]) else null
-                    val theDirectionBeforeThat = if (path.size >= 3) path[path.lastIndex-1].minus(path[path.lastIndex-2]) else null
-
-                    // we need to make a turn if the last movement was turn to complete the 180 turn of a zig zac pattern
-                    val isTurn = if (currentDirection == null || theDirectionBeforeThat == null) false else currentDirection != theDirectionBeforeThat
-
-                    var sortedNeighbors = validNeighbors
-
-                    if (currentDirection != null) {
-                        sortedNeighbors = sortedNeighbors.sortedByDescending { it == (currentSpot.plus(currentDirection)) }
-                    }
-
-                    if (isTurn) {
-                        val rotation = Vector2.Directions.angleBetween(theDirectionBeforeThat!!, currentDirection!!) // todo: see if that can be made performent because its always 90 degree turns
-                        if (rotation.absoluteValue.toInt() != 1) throw Exception() // should be -90 or 90
-
-                        val turnDirection = Vector2.Directions.rotate(currentDirection, rotation)
-                        sortedNeighbors = sortedNeighbors.sortedByDescending { it == (currentSpot.plus(turnDirection)) }
-                    }
-
-                    sortedNeighbors
-                }
-
-                val generationQueue: Queue<Vector2> by lazy {
-                    LinkedList(neighbors)
-                }
-
-                val rotationQueue: Queue<Node> = LinkedList()
-
-                override fun nextPath(): List<Vector2>? {
-                    if (done) return path
-                    // todo: calculate bubbles somewhere around here
-
-                    // generate nodes as long as the generation Queue is not empty
-                    val nodeToWorkOn: Node = if (generationQueue.peek() != null) {
-                        StandardNode(path + generationQueue.poll())
-                    } else if (rotationQueue.peek() != null) { // else pull one from the rotation
-                        rotationQueue.poll()
-                    } else {
-                        throw Exception("did not have next") // this shouldn't happen because the parent node shouldnt have called this if !hasNext()
-                    }
-
-                    val result = if (nodeToWorkOn.hasNext()) {
-                        nodeToWorkOn.nextPath() // either get the nextPath from the the next node
-                    } else null
-
-                    if (nodeToWorkOn.hasNext()) {
-                        rotationQueue.add(nodeToWorkOn)
-                    } else {
-                       // println(convertPathToString((nodeToWorkOn as StandardNode).path) + " killed.")
-                    }
-                    return result
-                }
-
-                override fun hasNext(): Boolean {
-                    return  done || generationQueue.peek() != null || rotationQueue.peek() != null
-                }
-
-
-            }
-
-
-
-
-
-
-
-            class RootNode(
-            ): Node {
-                val children = grassCoords.map { StandardNode(listOf(it)) }
-                val childrenQueue = LinkedList(children)
-
-                override fun nextPath(): List<Vector2>? {
-                    val poll = childrenQueue.poll() ?: return null
-                    val nextPath = poll.nextPath()
-                    if (poll.hasNext()) {
-                        childrenQueue.add(poll)
-                    }
-                    return nextPath
-                }
-
-                override fun hasNext(): Boolean {
-                    return childrenQueue.peek() != null
-                }
-
-
-            }
-
-            val rootNode = RootNode()
+            val rootNode = RootNode(lawn)
             var path: List<Vector2>? = null
-
-            val millis = measureTimeMillis{
-                while (path==null && rootNode.hasNext()) {
-                    path = rootNode.nextPath()
+            val milis = measureTimeMillis {
+                while (path == null && !rootNode.terminated ) {
+                    path = rootNode.getPath()
                 }
             }
-            if (path == null) {
-                println(lawnRows.joinToString("\n"))
-                println("No path found")
-            } else {
-                val time = if (millis > 1000) "${millis/1000} seconds" else "${millis} ms"
-                println("Found path in $time")
-                writer.writeOne(convertPathToString(path!!))
-            }
 
-            // make nodes connected
-            // node can provide next possible node
-
-
-
+            println("Found path in ${milis} miliseconds.")
+            println(path?.let {convertPathToString(it) })
         }
 
     }
-}
-
-abstract class AbstractNode(
-): Node {
-    var iterator = 0
-
-    abstract fun children(): List<Node>
-    fun nextChild(): Node {
-        val children = children()
-        val nextChild = children[iterator]
-        iterator ++
-        iterator -= children.lastIndex
-        return nextChild
-    }
-
-}
-
-interface Path{}
-
-interface Node {
-    fun nextPath(): List<Vector2>?
-    fun hasNext(): Boolean
 }
 
 

@@ -70,7 +70,7 @@ data class Vector2(
                 val normalizedIndex = (index + rotation).let {
                     var normalized = it
                     while (normalized < 0) {
-                        normalized = ROTATION.lastIndex + normalized
+                        normalized = ROTATION.lastIndex + 1 + normalized
                     }
                     normalized
                 }.let {
