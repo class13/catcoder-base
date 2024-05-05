@@ -39,9 +39,9 @@ data class Lawn(
     }.associate { it }
     val pointOfTree = pointToTileMap.entries.first { it.value == LawnTile.TREE }.key
     val pointsOfGrass = pointToTileMap.entries.filter { it.value == LawnTile.GRASS }.map { it.key }.toSet()
-    val pointsOfBorder = pointsOfGrass.filter { it.x == 0 || it.y == 0 || it.x == maxX || it.y == maxY }
+    val pointsOfBorder = pointsOfGrass.filter { it.x == 0 || it.y == 0 || it.x == maxX || it.y == maxY }.toSet()
     val pointsOfCorner = pointsOfGrass.filter { (it.x == 0 || it.x == maxX) && (it.y == 0 || it.y == maxY) }
-
+    val pointsNextToTree = pointOfTree.allNeighbors.intersect(pointsOfGrass)
 
     fun inBounds(point: Vector2): Boolean {
         if (point.x < 0 || point.y < 0) return false
@@ -90,7 +90,7 @@ class RootNode(
     lawn: Lawn
 ): AbstractNode(lawn) {
     init {
-        val startingPoints = lawn.pointsOfCorner // seemingly if there is a solution there is a solution that starts at a corner
+        val startingPoints = (lawn.pointsOfCorner + lawn.pointsNextToTree).toSet() // todo: maybe just corners and coords in between tree and border
         startingPoints.forEach { startingPoint ->
             queue.add {
                 StartNode(lawn, startingPoint)
@@ -201,7 +201,7 @@ class RegularNode(
     val innerQueue: Queue<Spin> = LinkedList(sortedSpins)
     var finishedPath: List<Vector2>? = null
 
-    override fun getPath(): List<Vector2>? {
+    override fun getPath(): List<Vector2>? { // todo: can this work without recursion.... when the fields get too big the stack overflows
         if (finishedPath != null) return finishedPath
         while(innerQueue.isNotEmpty()) {
             val spinToValidate = innerQueue.poll()
@@ -273,7 +273,7 @@ fun main(args: Array<String>) {
             var path: List<Vector2>? = null
             val milis = measureTimeMillis {
                 while (path == null && !rootNode.terminated ) {
-                    path = rootNode.getPath()
+                    path = rootNode.getPath() // todo: could this be multithreaded???
                 }
             }
 
