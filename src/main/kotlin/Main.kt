@@ -128,8 +128,19 @@ fun hasBubbles(lawn: Lawn, path: List<Vector2>): Boolean {
     val remainingCoords = lawn.pointsOfGrass.minus(path.toSet())
 
     // splitting bubbles can only be possible if there are exactly 2 neighbors that are remaining grass fields
-    val bubbleSplitIsPossible = currentCoord.neighbors.filter { remainingCoords.contains(it) }.size == 2
-    if (!bubbleSplitIsPossible) return false
+    val neighborsThatAreStillOpen = currentCoord.neighbors.filter { remainingCoords.contains(it) }
+    val hasExactlyTwoValidNeighbors = neighborsThatAreStillOpen.size == 2
+    if (!hasExactlyTwoValidNeighbors) return false
+
+    // make cheap check if the two neighbors are directly connected first
+    val firstNeighbor = neighborsThatAreStillOpen.first()
+    val secondNeighbor = neighborsThatAreStillOpen[1]
+    val neighborsAreDiagonalNeighbors = firstNeighbor.x != secondNeighbor.x && firstNeighbor.y != secondNeighbor.y
+    if (neighborsAreDiagonalNeighbors) {
+        val possibleConnections = listOf(Vector2(firstNeighbor.x, secondNeighbor.y), Vector2(secondNeighbor.x, firstNeighbor.y))
+        val neighborsAreConnected = possibleConnections.any { remainingCoords.contains(it) }
+        if (neighborsAreConnected) return false
+    }
 
     // calculating actual bubbles is pretty expensive
     val bubbles: MutableSet<Set<Vector2>> = mutableSetOf()
