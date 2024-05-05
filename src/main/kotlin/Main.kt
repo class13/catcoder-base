@@ -3,6 +3,9 @@ import catcoder.base.Vector2
 import java.util.LinkedList
 import java.util.Queue
 import java.util.Stack
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.Executors
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.function.Supplier
 import kotlin.system.measureTimeMillis
 
@@ -80,7 +83,7 @@ class ConclusiveResult(
 abstract class AbstractNode(
     val lawn: Lawn
 ) {
-    val queue: Queue<Supplier<AbstractNode>> = LinkedList()
+    val queue: Queue<Supplier<AbstractNode>> = ConcurrentLinkedQueue()
     var terminated = false
 
     open fun getPath(): IterativeResult {
@@ -92,9 +95,9 @@ abstract class AbstractNode(
             terminated = true
             return ConclusiveResult(null)
         }
+        val childNode = queue.poll().get()
         return object: IterativeResult{
             override fun getNext(): IterativeResult {
-                val childNode = queue.poll().get()
                 val result = childNode.getPath()
                 if (!childNode.terminated) {
                     queue.add{ childNode }
@@ -145,6 +148,7 @@ class StartNode(
 }
 
 fun hasBubbles(lawn: Lawn, path: List<Vector2>): Boolean {
+    if (path.size == lawn.pointsOfGrass.size) return true
     val currentCoord = path.last()
     val remainingCoords = lawn.pointsOfGrass.minus(path.toSet())
 
@@ -179,8 +183,9 @@ fun hasBubbles(lawn: Lawn, path: List<Vector2>): Boolean {
         bubble.add(coord)
         bubbles.add(bubble)
     }
+    if (bubbles.size > 1) return true
 
-    return bubbles.size > 1
+    return false
 }
 
 fun <T> toLinkList(list: List<T>): List<Pair<T, T>> {
@@ -199,8 +204,8 @@ val reverseDirectionMap = directionMap.entries.associate { Pair(it.value, it.key
 
 fun convertPathToString(path: List<Vector2>): String {
     val steps = toLinkList(path)
-    val firstCoord = path.first()
-    return "${firstCoord} " + steps.map { it.second.minus(it.first) }.map { reverseDirectionMap[it]!! }.joinToString("")
+    //val firstCoord = path.first()
+    return steps.map { it.second.minus(it.first) }.map { reverseDirectionMap[it]!! }.joinToString("")
 }
 
 class RegularNode(
@@ -278,7 +283,7 @@ fun findPath(lawn: Lawn) {
 }
 
 fun main(args: Array<String>) {
-    DirectoryFilesRunner("D:\\Projects\\catcoder-base\\src\\main\\resources\\level4").forEach { reader, writer ->
+    DirectoryFilesRunner("D:\\Projects\\catcoder-base\\src\\main\\resources\\level6").forEach { reader, writer ->
         println("Processing ${reader.file.name}")
         val numberOfLawns = reader.readOne()[0].toInt()
         (1..numberOfLawns).forEach { lawnIt ->
@@ -299,15 +304,23 @@ fun main(args: Array<String>) {
 
             val rootNode = RootNode(lawn)
             var path: List<Vector2>? = null
+            val numberOfThreads = 16
             val milis = measureTimeMillis {
-                while (path == null && !rootNode.terminated ) {
-                    var result: IterativeResult
-                    result = rootNode.getPath()
-                    while (result !is ConclusiveResult) {
-                        result = result.getNext()
+                val threads = (1..numberOfThreads).map {
+                    Thread{
+                        while (path == null && !rootNode.terminated ) {
+                            var result: IterativeResult
+                            result = rootNode.getPath()
+                            while (result !is ConclusiveResult) {
+                                result = result.getNext()
+                            }
+                            path = path ?: result.result
+                        }
                     }
-                    path = result.result
                 }
+                threads.forEach{ it.start() }
+                threads.forEach{ it.join() }
+
             }
 
             println("Found path in ${milis} miliseconds.")
