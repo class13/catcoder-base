@@ -2,6 +2,7 @@ import catcoder.base.DirectoryFilesRunner
 import catcoder.base.Vector2
 import java.util.LinkedList
 import java.util.Queue
+import java.util.Stack
 import java.util.function.Supplier
 import kotlin.system.measureTimeMillis
 
@@ -62,27 +63,47 @@ enum class Spin(val rotationValue: Int) { // rotationValue is given in units of 
     }
 }
 
+interface IterativeResult {
+    fun getNext(): IterativeResult
+}
+
+class ConclusiveResult(
+    val result: List<Vector2>?
+): IterativeResult {
+    override fun getNext(): IterativeResult {
+        throw Exception()
+    }
+}
+
+
+
 abstract class AbstractNode(
     val lawn: Lawn
 ) {
     val queue: Queue<Supplier<AbstractNode>> = LinkedList()
     var terminated = false
 
-    open fun getPath(): List<Vector2>? {
+    open fun getPath(): IterativeResult {
         if (terminated) {
             println("WARN: do not call a terminated node")
-            return null
+            return ConclusiveResult(null)
         }
         if (queue.isEmpty()) {
             terminated = true
-            return null
+            return ConclusiveResult(null)
         }
-        val childNode = queue.poll().get()
-        val result = childNode.getPath()
-        if (!childNode.terminated) {
-            queue.add{ childNode }
+        return object: IterativeResult{
+            override fun getNext(): IterativeResult {
+                val childNode = queue.poll().get()
+                val result = childNode.getPath()
+                if (!childNode.terminated) {
+                    queue.add{ childNode }
+                }
+                return result
+            }
+
         }
-        return result
+
     }
 }
 
@@ -201,8 +222,8 @@ class RegularNode(
     val innerQueue: Queue<Spin> = LinkedList(sortedSpins)
     var finishedPath: List<Vector2>? = null
 
-    override fun getPath(): List<Vector2>? { // todo: can this work without recursion.... when the fields get too big the stack overflows
-        if (finishedPath != null) return finishedPath
+    override fun getPath(): IterativeResult { // todo: can this work without recursion.... when the fields get too big the stack overflows
+        if (finishedPath != null) return ConclusiveResult(finishedPath)
         while(innerQueue.isNotEmpty()) {
             val spinToValidate = innerQueue.poll()
             val direction = if (spinToValidate == Spin.STRAIGHT) this.direction else this.direction.let { spinToValidate.applyTo(it) }
@@ -226,16 +247,23 @@ class RegularNode(
                 !createsBubbles()
             ) {
                 if (lawn.pointsOfGrass.size == (currentPath + 1).size) {
-                    return currentPath + nextPoint
+                    return ConclusiveResult(currentPath + nextPoint)
                 } else {
-                    val path = this.currentPath + nextPoint
-                    val newNode = RegularNode(lawn, path, direction, spinToValidate)
-                    assert(!newNode.terminated)
-                    val result = newNode.getPath()
-                    if (result == null && !newNode.terminated) {
-                        queue.add{ newNode }
+                    return object: IterativeResult {
+                        override fun getNext(): IterativeResult {
+                            val path = currentPath + nextPoint
+                            val newNode = RegularNode(lawn, path, direction, spinToValidate)
+                            assert(!newNode.terminated)
+
+                            val result = newNode.getPath()
+                            if ((result !is ConclusiveResult || result.result == null) && !newNode.terminated) {
+                                queue.add{ newNode }
+                            }
+                            return result
+                        }
+
                     }
-                    return result
+
 
                 }
 
@@ -273,12 +301,20 @@ fun main(args: Array<String>) {
             var path: List<Vector2>? = null
             val milis = measureTimeMillis {
                 while (path == null && !rootNode.terminated ) {
-                    path = rootNode.getPath() // todo: could this be multithreaded???
+                    var result: IterativeResult
+                    result = rootNode.getPath()
+                    while (result !is ConclusiveResult) {
+                        result = result.getNext()
+                    }
+                    path = result.result
                 }
             }
 
             println("Found path in ${milis} miliseconds.")
-            println(path?.let {convertPathToString(it) })
+            if (path == null) throw Exception("there is no way there is no way")
+            val representation = path!!.let {convertPathToString(it)}
+            println(representation)
+            writer.writeOne(representation)
         }
 
     }
